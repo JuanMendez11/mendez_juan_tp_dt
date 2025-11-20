@@ -72,3 +72,18 @@ def validate_preprocessing(trajectories):
         assert len(items) == len(ratings) == len(returns)
         assert returns[0] == np.sum(ratings)
         assert returns[-1] == ratings[-1]
+
+
+# if __name__ == "__main__":
+#     from load_data import load_training_data
+#     import pickle
+#     # Cargar datos de entrenamiento
+#     df_train = load_training_data(dataset='netflix')
+#     # Preprocesar datos
+#     trajectories = create_dt_dataset(df_train)
+#     # Validar preprocesamiento
+#     validate_preprocessing(trajectories)
+#     print("Preprocesamiento validado correctamente.")  
+#     # Guardar dataset preprocesado
+#     with open('../../data/processed/trajectories_train.pkl', 'wb') as f:
+#         pickle.dump(trajectories, f)
