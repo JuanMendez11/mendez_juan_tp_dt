@@ -1,3 +1,4 @@
 guias/
 .venv/
 src/data/__pycache__/
+=2.0.0
