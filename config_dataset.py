@@ -14,19 +14,6 @@ Uso:
     print(f"Train path: {paths['train']}")
 """
 
-import torch
-import torch.nn as nn
-from transformers import GPT2Config, GPT2Model
-import pandas as pd
-import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
-import pickle
-
-# Configuración del dispositivo
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f'Using device: {device}')
-
 # ============================================
 # 🎯 CONFIGURACIÓN: MODIFICA ESTA LÍNEA
 # ============================================
