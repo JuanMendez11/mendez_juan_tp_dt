@@ -96,7 +96,12 @@ class DecisionTransformer(nn.Module):
         
         # User group (broadcast a toda la secuencia)
         group_emb = self.group_embedding(user_groups).unsqueeze(1)  # (B, 1, H)
-        group_emb = group_emb.expand(-1, seq_len, -1)  # (B, L, H)
+        # Si viene con 4 dimensiones [B, 1, 1, H], le quitamos una para que quede [B, 1, H]
+        if group_emb.dim() == 4:
+            group_emb = group_emb.squeeze(1) 
+
+        # Ahora sí, expandimos a [B, L, H]
+        group_emb = group_emb.expand(-1, seq_len, -1)
         
         # === INTERLEAVE EMBEDDINGS ===
         # Formato: [rtg_0, state_0, action_0, rtg_1, state_1, action_1, ...]
