@@ -1,89 +1,102 @@
-# 🎯 IMPLEMENTAR: Función de preprocesamiento
-# El código de referencia está en el TP - pueden copiarlo y adaptarlo
-
 import numpy as np
+import torch
+from torch.utils.data import Dataset
+from tqdm import tqdm
 
-def create_dt_dataset(df_train):
+class DTDataset(Dataset):
     """
-    Convierte DataFrame raw a formato Decision Transformer.
-    
-    REFERENCIA: Ver código completo en 03_REFERENCIA_COMPLETA.md
-    
-    Args:
-        df_train: DataFrame con [user_id, user_group, items, ratings]
-    
-    Returns:
-        trajectories: List[Dict] con formato específico
+    Dataset para Decision Transformer.
+    Mismo que en la implementación PyTorch pura.
     """
-    trajectories = []
     
-    for idx, row in df_train.iterrows():
-        # TODO: Extraer items, ratings, group
-        items = row['items']        # numpy array de item IDs
-        ratings = row['ratings']    # numpy array de ratings
-        group = row['user_group']   # int (0-7)
+    def __init__(self, data, max_len=20):
+        """
+        Args:
+            data: lista de diccionarios con:
+                  {'states', 'actions', 'rtgs', 'timesteps', 'groups', 'attention_mask'}
+            max_len: longitud máxima de secuencia (padding)
+        """
+        self.data = data
+        self.max_len = max_len
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        episode = self.data[idx]
         
-        # TODO: Calcular returns-to-go (R̂)
-        # Hint: Iterar hacia atrás desde el final
-        # returns[t] = ratings[t] + returns[t+1]
-        returns = np.zeros(len(ratings))
+        # Extraer datos
+        states = episode['states']
+        actions = episode['actions']
+        rtgs = episode['rtgs']
+        timesteps = episode['timesteps']
+        group = episode['group']
         
-        # Último timestep: R̂_T = r_T
-        returns[-1] = ratings[-1]
+        seq_len = len(actions)
         
-        # Iterar hacia atrás: R̂_t = r_t + R̂_{t+1}
-        for t in range(len(ratings)-2, -1, -1):
-            returns[t] = ratings[t] + returns[t+1]
+        # Padding si es necesario
+        if seq_len < self.max_len:
+            pad_len = self.max_len - seq_len
+            
+            states = np.concatenate([states, np.zeros((pad_len, 1))])
+            actions = np.concatenate([actions, np.zeros(pad_len)])
+            rtgs = np.concatenate([rtgs, np.zeros((pad_len, 1))])
+            timesteps = np.concatenate([timesteps, np.zeros(pad_len)])
+            
+            # Attention mask: 1 = válido, 0 = padding
+            attention_mask = np.concatenate([
+                np.ones(seq_len),
+                np.zeros(pad_len)
+            ])
+        else:
+            attention_mask = np.ones(seq_len)
         
-        # TODO: Crear diccionario con formato correcto
-        trajectory = {
-            'items': items,
-            'ratings': ratings,
-            'returns_to_go': returns,
-            'timesteps': np.arange(len(items)),
-            'user_group': group
+        return {
+            'states': torch.FloatTensor(states),
+            'actions': torch.LongTensor(actions),
+            'rtgs': torch.FloatTensor(rtgs),
+            'timesteps': torch.LongTensor(timesteps),
+            'groups': torch.LongTensor([group]),
+            'attention_mask': torch.FloatTensor(attention_mask)
         }
-        
-        trajectories.append(trajectory)
+
+
+def create_dt_dataset(df_train, max_len=20):
+    """
+    Convierte DataFrame a formato Decision Transformer.
+    """
+    data = []
     
-    return trajectories
-
-
-def validate_preprocessing(trajectories):
-    """
-    Valida que el preprocesamiento sea correcto.
-    """
-    # TODO: Verificar que:
-    # - Todas las trayectorias tienen las keys correctas
-    # - len(items) == len(ratings) == len(returns_to_go)
-    # - returns_to_go[0] == sum(ratings)
-    # - returns_to_go[-1] == ratings[-1]
-    for traj in trajectories:
-        assert 'items' in traj
-        assert 'ratings' in traj
-        assert 'returns_to_go' in traj
-        assert 'timesteps' in traj
-        assert 'user_group' in traj
+    for idx, row in tqdm(df_train.iterrows(), total=len(df_train), desc="Creating dataset"):
+        items = row['items']
+        ratings = row['ratings']
+        group = row['user_group']
         
-        items = traj['items']
-        ratings = traj['ratings']
-        returns = traj['returns_to_go']
+        seq_len = len(items)
         
-        assert len(items) == len(ratings) == len(returns)
-        assert returns[0] == np.sum(ratings)
-        assert returns[-1] == ratings[-1]
-
-
-# if __name__ == "__main__":
-#     from load_data import load_training_data
-#     import pickle
-#     # Cargar datos de entrenamiento
-#     df_train = load_training_data(dataset='netflix')
-#     # Preprocesar datos
-#     trajectories = create_dt_dataset(df_train)
-#     # Validar preprocesamiento
-#     validate_preprocessing(trajectories)
-#     print("Preprocesamiento validado correctamente.")  
-#     # Guardar dataset preprocesado
-#     with open('../../data/processed/trajectories_train.pkl', 'wb') as f:
-#         pickle.dump(trajectories, f)
+        # Calcular return-to-go (suma acumulada inversa)
+        returns = np.array(ratings, dtype=np.float32)
+        rtgs = np.cumsum(returns[::-1])[::-1]  # suma acumulada desde el final
+        
+        # Preparar tensores
+        states = ratings.reshape(-1, 1).astype(np.float32)
+        actions = np.array(items, dtype=np.int64)
+        rtgs = rtgs.reshape(-1, 1).astype(np.float32)
+        timesteps = np.arange(seq_len, dtype=np.int64)
+        
+        # Truncar si es muy largo
+        if seq_len > max_len:
+            states = states[-max_len:]
+            actions = actions[-max_len:]
+            rtgs = rtgs[-max_len:]
+            timesteps = timesteps[-max_len:]
+        
+        data.append({
+            'states': states,
+            'actions': actions,
+            'rtgs': rtgs,
+            'timesteps': timesteps,
+            'group': group
+        })
+    
+    return data
