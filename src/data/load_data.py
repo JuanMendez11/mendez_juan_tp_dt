@@ -20,7 +20,7 @@ def load_training_data(dataset='netflix'):
     Returns:
         df: pandas DataFrame con columnas [user_id, user_group, items, ratings]
     """
-    path = f'../../data/train/{dataset}8_train.df'
+    path = f'../data/train/{dataset}8_train.df'
     df = pd.read_pickle(path)
     return df
 
@@ -35,7 +35,7 @@ def load_test_data(dataset='netflix'):
     Returns:
         test_users: lista de diccionarios con keys [group, items, ratings]
     """
-    path = f'../../data/test_users/{dataset}8_test.json'
+    path = f'../data/test_users/{dataset}8_test.json'
     with open(path, 'r') as f:
         return json.load(f)
 
@@ -50,6 +50,6 @@ def load_group_centroids(dataset='netflix'):
     Returns:
         mu: DataFrame de 8xNUM_ITEMS con ratings promedio por grupo
     """
-    path = f'../../data/groups/mu_{dataset}8.csv'
+    path = f'../data/groups/mu_{dataset}8.csv'
     mu = pd.read_csv(path, header=None)
     return mu
