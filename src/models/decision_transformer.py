@@ -108,6 +108,11 @@ class DecisionTransformer(nn.Module):
         
         # Para simplicidad, usamos sum de embeddings + positional
         # (En la versión completa, se pueden interleave explícitamente)
+        # --- DEBUG ---
+        print(f"States Emb: {state_emb.shape}")
+        print(f"Group Emb:  {group_emb.shape}")
+        print(f"Target Seq Len: {seq_len}")
+        # -------------
         h = state_emb + rtg_emb + time_emb + group_emb
         h = self.ln(h)
         
