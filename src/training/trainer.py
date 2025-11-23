@@ -1,92 +1,93 @@
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
+from tqdm import tqdm
 
-def train_decision_transformer(model, train_loader, val_loader, 
-                               optimizer, device, num_epochs=50):
+def train_decision_transformer_hf(
+    model,
+    train_loader,
+    num_epochs=10,
+    learning_rate=1e-4,
+    weight_decay=1e-4,
+    device='cuda'
+):
     """
-    Entrena el Decision Transformer.
+    Entrena el Decision Transformer con HuggingFace.
     
     Args:
-        model: Instancia de DecisionTransformer
-        train_loader: DataLoader de training
-        val_loader: DataLoader de validación
-        optimizer: torch.optim.Optimizer (ej: Adam)
+        model: DecisionTransformerHF
+        train_loader: DataLoader con datos de entrenamiento
+        num_epochs: número de épocas
+        learning_rate: learning rate
+        weight_decay: regularización L2
         device: 'cuda' o 'cpu'
-        num_epochs: Número de épocas
-    
-    Returns:
-        model: Modelo entrenado
-        history: Dict con losses por época
     """
-    model.to(device)
-    history = {'train_loss': [], 'val_loss': []}
+    model = model.to(device)
+    model.train()
     
+    # Optimizer: AdamW (recomendado para transformers)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=weight_decay
+    )
+    
+    # Loss: Cross-Entropy (classification sobre items)
+    criterion = nn.CrossEntropyLoss()
+    
+    # Training loop
     for epoch in range(num_epochs):
-        # === TRAINING ===
-        model.train()
-        total_train_loss = 0
+        total_loss = 0
+        num_batches = 0
         
-        for batch in train_loader:
-            # Mover batch a device
-            states = batch['states'].to(device)      # (B, L)
-            actions = batch['actions'].to(device)    # (B, L)
-            rtg = batch['rtg'].to(device)            # (B, L, 1)
-            timesteps = batch['timesteps'].to(device) # (B, L)
-            groups = batch['groups'].to(device)      # (B,)
-            targets = batch['targets'].to(device)    # (B, L) - next items
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{num_epochs}')
+        
+        for batch in pbar:
+            # Mover a device
+            states = batch['states'].to(device)
+            actions = batch['actions'].to(device)
+            rtgs = batch['rtgs'].to(device)
+            timesteps = batch['timesteps'].to(device)
+            groups = batch['groups'].squeeze(1).to(device)
+            attention_mask = batch['attention_mask'].to(device)
             
             # Forward pass
-            logits = model(states, actions, rtg, timesteps, groups)
+            action_logits = model(
+                states=states,
+                actions=actions,
+                rtgs=rtgs,
+                timesteps=timesteps,
+                groups=groups,
+                attention_mask=attention_mask
+            )  # (batch, seq_len, num_items)
             
-            # Compute loss (cross-entropy)
-            loss = F.cross_entropy(
-                logits.reshape(-1, model.num_items),
-                targets.reshape(-1),
-                ignore_index=-1  # para padding
-            )
+            # Preparar targets: queremos predecir la SIGUIENTE acción
+            # Predicción en t → target en t+1
+            # Descartamos última predicción (no hay target)
+            logits = action_logits[:, :-1, :].reshape(-1, model.num_items)
+            targets = actions[:, 1:].reshape(-1)
             
-            # Backprop
+            # Crear máscara para ignorar padding
+            mask = attention_mask[:, 1:].reshape(-1).bool()
+            
+            # Calcular loss solo en posiciones válidas
+            loss = criterion(logits[mask], targets[mask])
+            
+            # Backward pass
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            
+            # Gradient clipping (evitar explosión de gradientes)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
             
-            total_train_loss += loss.item()
-        
-        avg_train_loss = total_train_loss / len(train_loader)
-        
-        # === VALIDATION ===
-        model.eval()
-        with torch.no_grad():
-            total_val_loss = 0
-            for batch in val_loader:
-                # Mover batch a device
-                states = batch['states'].to(device)      # (B, L)
-                actions = batch['actions'].to(device)    # (B, L)
-                rtg = batch['rtg'].to(device)            # (B, L, 1)
-                timesteps = batch['timesteps'].to(device) # (B, L)
-                groups = batch['groups'].to(device)      # (B,)
-                targets = batch['targets'].to(device)    # (B, L) - next items
-                
-                # Forward pass
-                logits = model(states, actions, rtg, timesteps, groups)
-                
-                # Compute loss (cross-entropy)
-                loss = F.cross_entropy(
-                    logits.reshape(-1, model.num_items),
-                    targets.reshape(-1),
-                    ignore_index=-1  # para padding
-                )
-                
-                total_val_loss += loss.item()
+            # Logging
+            total_loss += loss.item()
+            num_batches += 1
             
-            avg_val_loss = total_val_loss / len(val_loader)
+            pbar.set_postfix({'loss': f'{loss.item():.4f}'})
         
-        history['train_loss'].append(avg_train_loss)
-        history['val_loss'].append(avg_val_loss)
-        
-        print(f'Epoch {epoch+1}/{num_epochs}:')
-        print(f'  Train Loss: {avg_train_loss:.4f}')
-        print(f'  Val Loss: {avg_val_loss:.4f}')
+        avg_loss = total_loss / num_batches
+        print(f'Epoch {epoch+1} - Average Loss: {avg_loss:.4f}')
     
-    return model, history
+    return model
