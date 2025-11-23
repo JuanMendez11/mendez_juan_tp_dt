@@ -32,7 +32,7 @@ def train_decision_transformer(model, train_loader,
             rtg = batch['rtgs'].to(device)            # (B, L, 1)
             timesteps = batch['timesteps'].to(device) # (B, L)
             groups = batch['groups'].to(device)      # (B,)
-            targets = batch['targets'].to(device)    # (B, L) - next items
+            targets = batch['attention_mask'].to(device)    # (B, L) - next items
             
             # Forward pass
             logits = model(states, actions, rtg, timesteps, groups)
