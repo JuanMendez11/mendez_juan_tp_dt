@@ -96,8 +96,8 @@ def main():
     )
     
     # Guardar modelo
-    torch.save(model.state_dict(), f'decision_transformer_hf_{DATASET}.pt')
-    print(f"Modelo guardado: decision_transformer_hf_{DATASET}.pt")
+    torch.save(model.state_dict(), f'decision_transformer_{DATASET}.pt')
+    print(f"Modelo guardado: decision_transformer_{DATASET}.pt")
     
     # === 5. EVALUAR ===
     # print("\n[5/5] Evaluando en cold-start...")
