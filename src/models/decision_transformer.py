@@ -1,22 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers import GPT2Model, GPT2Config
 
-class DecisionTransformerHF(nn.Module):
-    """
-    Decision Transformer usando GPT-2 de HuggingFace como backbone.
-    
-    Ventajas:
-    - Código más simple (no implementar atención desde cero)
-    - Usa componentes probados y optimizados
-    - Fácil de modificar y experimentar
-    
-    Arquitectura:
-    1. Embeddings: group, state (rating), action (item), rtg
-    2. GPT-2 Transformer (de HuggingFace)
-    3. Action head: predice siguiente item
-    """
-    
+class DecisionTransformer(nn.Module):
     def __init__(
         self,
         num_items=752,
@@ -24,151 +9,117 @@ class DecisionTransformerHF(nn.Module):
         hidden_dim=128,
         n_layers=3,
         n_heads=4,
-        max_seq_len=50,
+        context_length=20,
+        max_timestep=200,
         dropout=0.1
     ):
         super().__init__()
         
-        self.num_items = num_items
-        self.num_groups = num_groups
         self.hidden_dim = hidden_dim
-        self.max_seq_len = max_seq_len
+        self.context_length = context_length
         
         # === EMBEDDINGS ===
         
-        # Group embedding: representa el cluster del usuario (0-7)
+        # Item embedding (para history y acciones)
+        self.item_embedding = nn.Embedding(num_items, hidden_dim)
+        
+        # User group embedding
         self.group_embedding = nn.Embedding(num_groups, hidden_dim)
         
-        # Action embedding: representa el item (película/libro)
-        # Embedding de alta dimensión para capturar similitud entre items
-        self.action_embedding = nn.Embedding(num_items, hidden_dim)
-        
-        # State embedding: convierte rating (1-5) a vector
-        # Usamos linear en vez de embedding porque ratings pueden ser continuos
-        self.state_embedding = nn.Linear(1, hidden_dim)
-        
-        # RTG embedding: convierte return-to-go a vector
+        # Return-to-go embedding (escalar continuo)
         self.rtg_embedding = nn.Linear(1, hidden_dim)
         
-        # Timestep embedding: codifica posición temporal
-        self.timestep_embedding = nn.Embedding(max_seq_len, hidden_dim)
+        # Timestep embedding (positional encoding)
+        self.timestep_embedding = nn.Embedding(max_timestep, hidden_dim)
         
-        # === GPT-2 TRANSFORMER (HuggingFace) ===
+        # === TRANSFORMER ===
         
-        # Configuración del GPT-2
-        config = GPT2Config(
-            vocab_size=1,  # No usamos vocabulario de palabras
-            n_positions=max_seq_len * 4,  # 4 tokens por paso (group, state, action, rtg)
-            n_embd=hidden_dim,
-            n_layer=n_layers,
-            n_head=n_heads,
-            resid_pdrop=dropout,
-            embd_pdrop=dropout,
-            attn_pdrop=dropout,
-            use_cache=False
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_dim,
+            nhead=n_heads,
+            dim_feedforward=hidden_dim * 4,
+            dropout=dropout,
+            activation='gelu',
+            batch_first=True
         )
         
-        # Transformer de HuggingFace (¡esto reemplaza ~200 líneas de código!)
-        self.transformer = GPT2Model(config)
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=n_layers
+        )
         
-        # === OUTPUT HEAD ===
+        # === PREDICTION HEAD ===
         
-        # Layer normalization final
-        self.ln_f = nn.LayerNorm(hidden_dim)
+        # Predecir qué item recomendar
+        self.predict_item = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, num_items)
+        )
         
-        # Action prediction head: hidden_dim → num_items (scores)
-        self.action_head = nn.Linear(hidden_dim, num_items)
+        # Layer normalization
+        self.ln = nn.LayerNorm(hidden_dim)
         
-        # Inicialización de pesos
-        self.apply(self._init_weights)
-    
-    def _init_weights(self, module):
-        """Inicialización de pesos (como en GPT-2)"""
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            module.weight.data.normal_(mean=0.0, std=0.02)
-            if isinstance(module, nn.Linear) and module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
-    
-    def forward(self, states, actions, rtgs, timesteps, groups, attention_mask=None):
+    def forward(self, 
+                states,        # (batch, seq_len) - item IDs vistos
+                actions,       # (batch, seq_len) - item IDs recomendados
+                returns_to_go, # (batch, seq_len, 1) - R̂ values
+                timesteps,     # (batch, seq_len) - posiciones temporales
+                user_groups,   # (batch,) - cluster del usuario
+                attention_mask=None):
         """
-        Forward pass del Decision Transformer.
-        
         Args:
-            states: (batch, seq_len, 1) - ratings de items vistos
-            actions: (batch, seq_len) - IDs de items vistos
-            rtgs: (batch, seq_len, 1) - return-to-go en cada paso
-            timesteps: (batch, seq_len) - timestep de cada posición
-            groups: (batch,) - grupo del usuario
-            attention_mask: (batch, seq_len) - máscara de padding (opcional)
-        
+            states: IDs de items en history
+            actions: IDs de items recomendados (targets)
+            returns_to_go: R̂ para cada timestep
+            timesteps: posiciones temporales
+            user_groups: cluster del usuario
+            
         Returns:
-            action_logits: (batch, seq_len, num_items) - scores para predecir siguiente item
+            item_logits: (batch, seq_len, num_items) - probabilidades sobre items
         """
-        batch_size, seq_len = actions.shape
+        batch_size, seq_len = states.shape
         
-        # === CREAR EMBEDDINGS ===
+        # === EMBED INPUTS ===
         
-        # Group embedding: expandir para toda la secuencia
-        # (batch,) → (batch, 1, hidden_dim) → (batch, seq_len, hidden_dim)
-        group_emb = self.group_embedding(groups).unsqueeze(1)
-        group_emb = group_emb.expand(batch_size, seq_len, self.hidden_dim)
+        # States (history)
+        state_emb = self.item_embedding(states)  # (B, L, H)
         
-        # State embedding: ratings
-        state_emb = self.state_embedding(states)  # (batch, seq_len, hidden_dim)
+        # Actions (ya recomendados, para autoregression)
+        action_emb = self.item_embedding(actions)  # (B, L, H)
         
-        # Action embedding: items
-        action_emb = self.action_embedding(actions)  # (batch, seq_len, hidden_dim)
+        # Returns-to-go
+        rtg_emb = self.rtg_embedding(returns_to_go)  # (B, L, H)
         
-        # RTG embedding: return-to-go
-        rtg_emb = self.rtg_embedding(rtgs)  # (batch, seq_len, hidden_dim)
+        # Timesteps
+        time_emb = self.timestep_embedding(timesteps)  # (B, L, H)
         
-        # Timestep embedding: posición temporal
-        timestep_emb = self.timestep_embedding(timesteps)  # (batch, seq_len, hidden_dim)
+        # User group (broadcast a toda la secuencia)
+        group_emb = self.group_embedding(user_groups).unsqueeze(1)  # (B, 1, H)
+        group_emb = group_emb.expand(-1, seq_len, -1)  # (B, L, H)
         
-        # === INTERLEAVE: [group, state, action, rtg] para cada timestep ===
+        # === INTERLEAVE EMBEDDINGS ===
+        # Formato: [rtg_0, state_0, action_0, rtg_1, state_1, action_1, ...]
         
-        # Crear secuencia alternada: group_0, state_0, action_0, rtg_0, group_1, ...
-        # Shape final: (batch, seq_len * 4, hidden_dim)
-        stacked_inputs = torch.stack(
-            [group_emb, state_emb, action_emb, rtg_emb], dim=2
-        ).reshape(batch_size, seq_len * 4, self.hidden_dim)
+        # Para simplicidad, usamos sum de embeddings + positional
+        # (En la versión completa, se pueden interleave explícitamente)
+        h = state_emb + rtg_emb + time_emb + group_emb
+        h = self.ln(h)
         
-        # Agregar timestep embedding (se repite 4 veces por paso)
-        # (batch, seq_len, hidden_dim) → (batch, seq_len * 4, hidden_dim)
-        timestep_emb_expanded = timestep_emb.repeat_interleave(4, dim=1)
-        stacked_inputs = stacked_inputs + timestep_emb_expanded
+        # === CAUSAL MASK ===
+        # Asegurar que cada timestep solo ve el pasado
+        if attention_mask is None:
+            attention_mask = self._generate_causal_mask(seq_len).to(h.device)
         
-        # === CREAR ATTENTION MASK ===
+        # === TRANSFORMER ===
+        h = self.transformer(h, mask=attention_mask)  # (B, L, H)
         
-        if attention_mask is not None:
-            # Expandir máscara para los 4 tokens por paso
-            # (batch, seq_len) → (batch, seq_len * 4)
-            attention_mask = attention_mask.repeat_interleave(4, dim=1)
+        # === PREDICT NEXT ITEM ===
+        item_logits = self.predict_item(h)  # (B, L, num_items)
         
-        # === PASAR POR TRANSFORMER (HuggingFace hace la magia) ===
-        
-        transformer_outputs = self.transformer(
-            inputs_embeds=stacked_inputs,
-            attention_mask=attention_mask
-        )
-        
-        # Obtener hidden states: (batch, seq_len * 4, hidden_dim)
-        hidden_states = transformer_outputs.last_hidden_state
-        
-        # === EXTRACT ACTION PREDICTIONS ===
-        
-        # Queremos predecir acciones, así que tomamos los hidden states
-        # en las posiciones de "action" (cada 4 tokens, offset 2)
-        # Posiciones: 2, 6, 10, 14, ... (group=0, state=1, action=2, rtg=3)
-        action_hidden = hidden_states[:, 2::4, :]  # (batch, seq_len, hidden_dim)
-        
-        # Layer norm
-        action_hidden = self.ln_f(action_hidden)
-        
-        # Predecir siguiente item
-        action_logits = self.action_head(action_hidden)  # (batch, seq_len, num_items)
-        
-        return action_logits
+        return item_logits
+    
+    def _generate_causal_mask(self, seq_len):
+        """Generate causal mask for autoregressive generation."""
+        mask = torch.triu(torch.ones(seq_len, seq_len) * float('-inf'), diagonal=1)
+        return mask
