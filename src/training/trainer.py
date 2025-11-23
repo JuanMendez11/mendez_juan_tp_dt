@@ -1,6 +1,3 @@
-# 🎯 IMPLEMENTAR: Loop de entrenamiento
-# Código de referencia en el TP
-
 import torch
 import torch.nn.functional as F
 
@@ -30,26 +27,29 @@ def train_decision_transformer(model, train_loader, val_loader,
         total_train_loss = 0
         
         for batch in train_loader:
-            # TODO: Mover batch a device
-            # states = batch['states'].to(device)
-            # actions = ...
-            # rtg = ...
-            # timesteps = ...
-            # groups = ...
-            # targets = ...
+            # Mover batch a device
+            states = batch['states'].to(device)      # (B, L)
+            actions = batch['actions'].to(device)    # (B, L)
+            rtg = batch['rtg'].to(device)            # (B, L, 1)
+            timesteps = batch['timesteps'].to(device) # (B, L)
+            groups = batch['groups'].to(device)      # (B,)
+            targets = batch['targets'].to(device)    # (B, L) - next items
             
-            # TODO: Forward pass
-            # logits = model(states, actions, rtg, timesteps, groups)
+            # Forward pass
+            logits = model(states, actions, rtg, timesteps, groups)
             
-            # TODO: Compute loss (cross-entropy)
-            # Hint: Reshape logits y targets para cross_entropy
-            # loss = F.cross_entropy(...)
+            # Compute loss (cross-entropy)
+            loss = F.cross_entropy(
+                logits.reshape(-1, model.num_items),
+                targets.reshape(-1),
+                ignore_index=-1  # para padding
+            )
             
-            # TODO: Backprop
-            # optimizer.zero_grad()
-            # loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            # optimizer.step()
+            # Backprop
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
             
             total_train_loss += loss.item()
         
@@ -60,8 +60,26 @@ def train_decision_transformer(model, train_loader, val_loader,
         with torch.no_grad():
             total_val_loss = 0
             for batch in val_loader:
-                # TODO: Similar a training pero sin backprop
-                pass
+                # Mover batch a device
+                states = batch['states'].to(device)      # (B, L)
+                actions = batch['actions'].to(device)    # (B, L)
+                rtg = batch['rtg'].to(device)            # (B, L, 1)
+                timesteps = batch['timesteps'].to(device) # (B, L)
+                groups = batch['groups'].to(device)      # (B,)
+                targets = batch['targets'].to(device)    # (B, L) - next items
+                
+                # Forward pass
+                logits = model(states, actions, rtg, timesteps, groups)
+                
+                # Compute loss (cross-entropy)
+                loss = F.cross_entropy(
+                    logits.reshape(-1, model.num_items),
+                    targets.reshape(-1),
+                    ignore_index=-1  # para padding
+                )
+                
+                total_val_loss += loss.item()
+            
             avg_val_loss = total_val_loss / len(val_loader)
         
         history['train_loss'].append(avg_train_loss)
