@@ -83,7 +83,9 @@ class DecisionTransformer(nn.Module):
         # === EMBED INPUTS ===
         
         # States (history)
-        state_emb = self.item_embedding(states)  # (B, L, H)
+        state_emb = self.state_embedding(states)
+        if state_emb.dim() == 4:
+            state_emb = state_emb.squeeze(2) # Transforma [64, 20, 1, 128] -> [64, 20, 128]
         
         # Actions (ya recomendados, para autoregression)
         action_emb = self.item_embedding(actions)  # (B, L, H)
