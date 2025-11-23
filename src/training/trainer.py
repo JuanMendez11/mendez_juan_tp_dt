@@ -1,3 +1,6 @@
+# 🎯 IMPLEMENTAR: Loop de entrenamiento
+# Código de referencia en el TP
+
 import torch
 import torch.nn as nn
 from tqdm import tqdm
