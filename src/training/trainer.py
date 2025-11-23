@@ -29,7 +29,7 @@ def train_decision_transformer(model, train_loader,
             states = batch['states'].to(device)      # (B, L)
             actions = batch['actions'].to(device)
             print(batch.keys())    # (B, L)
-            rtg = batch['rtg'].to(device)            # (B, L, 1)
+            rtg = batch['rtgs'].to(device)            # (B, L, 1)
             timesteps = batch['timesteps'].to(device) # (B, L)
             groups = batch['groups'].to(device)      # (B,)
             targets = batch['targets'].to(device)    # (B, L) - next items
