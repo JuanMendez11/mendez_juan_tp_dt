@@ -26,12 +26,12 @@ def train_decision_transformer(model, train_loader,
         total_train_loss = 0
         
         for batch in train_loader:
-            states = batch['states'].to(device)      # (B, L)
+            states = batch['states'].to(device).long()      # (B, L)
             actions = batch['actions'].to(device)
             print(batch.keys())    # (B, L)
             rtg = batch['rtgs'].to(device)            # (B, L, 1)
-            timesteps = batch['timesteps'].to(device) # (B, L)
-            groups = batch['groups'].to(device)      # (B,)
+            timesteps = batch['timesteps'].to(device).long() # (B, L)
+            groups = batch['groups'].to(device).long()      # (B,)
             targets = batch['attention_mask'].to(device)    # (B, L) - next items
             
             # Forward pass
