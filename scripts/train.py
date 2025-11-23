@@ -86,7 +86,7 @@ def main():
     
     # === 4. ENTRENAR ===
     print("\n[4/5] Entrenando modelo...")
-    
+
     model = train_decision_transformer(
         model=model,
         train_loader=train_loader,
