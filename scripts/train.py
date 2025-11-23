@@ -25,13 +25,13 @@ else:
 NUM_GROUPS = 8
 
 
-from src.data.load_data import create_dt_dataset, DTDataset
+from src.data.preprocessing import create_dt_dataset, DTDataset
 from src.models.decision_transformer import DecisionTransformer
 from src.training.trainer import train_decision_transformer
 
 
 def main():
-    """Script completo para entrenar y evaluar"""
+    """Script completo para entrenar"""
     
     print("="*60)
     print("DECISION TRANSFORMER TRAINING")
