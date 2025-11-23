@@ -78,7 +78,7 @@ class DecisionTransformer(nn.Module):
         Returns:
             item_logits: (batch, seq_len, num_items) - probabilidades sobre items
         """
-        batch_size, seq_len = states.shape
+        seq_len = states.shape
         
         # === EMBED INPUTS ===
         
