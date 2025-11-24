@@ -17,7 +17,10 @@ class DecisionTransformer(nn.Module):
         
         self.hidden_dim = hidden_dim
         self.context_length = context_length
-        
+
+        # Agregamos num_items
+        self.num_items = num_items
+
         # === EMBEDDINGS ===
         
         # Item embedding (para history y acciones)
