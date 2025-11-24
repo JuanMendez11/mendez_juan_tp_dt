@@ -17,7 +17,6 @@ class DecisionTransformer(nn.Module):
         
         self.hidden_dim = hidden_dim
         self.context_length = context_length
-        self.num_items = num_items # agregado
         
         # === EMBEDDINGS ===
         
@@ -79,14 +78,12 @@ class DecisionTransformer(nn.Module):
         Returns:
             item_logits: (batch, seq_len, num_items) - probabilidades sobre items
         """
-        batch_size, seq_len, _ = states.shape
+        batch_size, seq_len = states.shape
         
         # === EMBED INPUTS ===
         
         # States (history)
-        state_emb = self.item_embedding(states)
-        if state_emb.dim() == 4:
-            state_emb = state_emb.squeeze(2) # Transforma [64, 20, 1, 128] -> [64, 20, 128]
+        state_emb = self.item_embedding(states)  # (B, L, H)
         
         # Actions (ya recomendados, para autoregression)
         action_emb = self.item_embedding(actions)  # (B, L, H)
@@ -99,23 +96,13 @@ class DecisionTransformer(nn.Module):
         
         # User group (broadcast a toda la secuencia)
         group_emb = self.group_embedding(user_groups).unsqueeze(1)  # (B, 1, H)
-        # Si viene con 4 dimensiones [B, 1, 1, H], le quitamos una para que quede [B, 1, H]
-        if group_emb.dim() == 4:
-            group_emb = group_emb.squeeze(1) 
-
-        # Ahora sí, expandimos a [B, L, H]
-        group_emb = group_emb.expand(-1, seq_len, -1)
+        group_emb = group_emb.expand(-1, seq_len, -1)  # (B, L, H)
         
         # === INTERLEAVE EMBEDDINGS ===
         # Formato: [rtg_0, state_0, action_0, rtg_1, state_1, action_1, ...]
         
         # Para simplicidad, usamos sum de embeddings + positional
         # (En la versión completa, se pueden interleave explícitamente)
-        # --- DEBUG ---
-        print(f"States Emb: {state_emb.shape}")
-        print(f"Group Emb:  {group_emb.shape}")
-        print(f"Target Seq Len: {seq_len}")
-        # -------------
         h = state_emb + rtg_emb + time_emb + group_emb
         h = self.ln(h)
         
