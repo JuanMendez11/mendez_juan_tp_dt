@@ -1,8 +1,12 @@
 import torch
 import torch.nn.functional as F
 
-def train_decision_transformer(model, train_loader, 
-                               optimizer, device, num_epochs=50):
+def train_decision_transformer(
+        model, 
+        train_loader, 
+        optimizer, 
+        device, 
+        num_epochs=50):
     """
     Entrena el Decision Transformer.
     
@@ -26,13 +30,12 @@ def train_decision_transformer(model, train_loader,
         total_train_loss = 0
         
         for batch in train_loader:
-            states = batch['states'].to(device).long()      # (B, L)
-            actions = batch['actions'].to(device).long()
-            print(batch.keys())    # (B, L)
-            rtg = batch['rtgs'].to(device)            # (B, L, 1)
-            timesteps = batch['timesteps'].to(device).long() # (B, L)
-            groups = batch['groups'].to(device).long()      # (B,)
-            targets = batch['attention_mask'].to(device)    # (B, L) - next items
+            states = batch['states'].to(device)      # (B, L)
+            actions = batch['actions'].to(device)    # (B, L)
+            rtg = batch['rtg'].to(device)            # (B, L, 1)
+            timesteps = batch['timesteps'].to(device) # (B, L)
+            groups = batch['groups'].to(device)      # (B,)
+            targets = batch['targets'].to(device)    # (B, L) - next items
             
             # Forward pass
             logits = model(states, actions, rtg, timesteps, groups)
