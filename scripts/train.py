@@ -5,12 +5,14 @@ import numpy as np
 from torch.utils.data import DataLoader
 import pickle
 import os
+import json
 
 from src.data.load_data import load_training_data
 from src.data.preprocessing import create_dt_dataset, validate_preprocessing
 from src.data.dataset import RecommendationDataset
 from src.models.decision_transformer import DecisionTransformer
 from src.training.trainer import train_decision_transformer
+from src.evaluation.evaluate import evaluate_model
 
 
 # === CONFIGURACIÓN DEL DATASET ===
@@ -111,6 +113,31 @@ def main():
     with open(history_path, 'wb') as f:
         pickle.dump(history, f)
     print(f"History guardado: {history_path}")
+
+
+    # === 6. EVALUAR ===
+    print("\nEvaluando en cold-start...")
+    
+    with open(test_path, 'r') as f:
+        test_data = json.load(f)
+
+    print(f"Test users: {len(test_data)}")
+
+    results = evaluate_model(
+        model=model,
+        test_data=test_data,
+        device=device,
+        target_return=None,  # usar máximo posible
+        k_list=[5, 10, 20]
+    )
+    
+    print("\n" + "="*60)
+    print("RESULTADOS FINALES")
+    print("="*60)
+    for metric, value in results.items():
+        print(f"{metric:12s}: {value:.4f}")
+    print("="*60)
+
     
     
 
