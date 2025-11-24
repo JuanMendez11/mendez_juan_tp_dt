@@ -14,7 +14,7 @@ def create_dt_dataset(df_train):
     
     for idx, row in df_train.iterrows():
         # Extraer items, ratings, group
-        items = row['states']        # numpy array de item IDs
+        items = row['items']        # numpy array de item IDs
         ratings = row['ratings']    # numpy array de ratings
         group = row['user_group']   # int (0-7)
 
@@ -44,9 +44,14 @@ def validate_preprocessing(trajectories):
     Valida que el preprocesamiento sea correcto.
     """
     for traj in trajectories:
-        assert all(key in traj for key in ['items', 'ratings', 'returns_to_go', 'timesteps', 'user_group']), "Faltan keys en la trayectoria"
-        n = len(traj['items'])
-        assert n == len(traj['ratings']) == len(traj['returns_to_go']), "Longitudes inconsistentes"
-        assert traj['returns_to_go'][0] == np.sum(traj['ratings']), "Returns-to-go inicial incorrecto"
-        assert traj['returns_to_go'][-1] == traj['ratings'][-1], "Returns-to-go final incorrecto"
-
+        assert 'items' in traj
+        assert 'ratings' in traj
+        assert 'returns_to_go' in traj
+        assert 'timesteps' in traj
+        assert 'user_group' in traj
+        items = traj['items']
+        ratings = traj['ratings']
+        returns = traj['returns_to_go']
+        assert len(items) == len(ratings) == len(returns)
+        assert returns[0] == np.sum(ratings)
+        assert returns[-1] == ratings[-1]
