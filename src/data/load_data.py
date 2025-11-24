@@ -1,6 +1,3 @@
-# 🎯 IMPLEMENTAR: Funciones básicas de carga
-# Usar el código de ejemplo del TP como guía
-
 import pandas as pd
 import json
 
