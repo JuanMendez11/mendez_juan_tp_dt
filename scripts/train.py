@@ -96,8 +96,8 @@ def main():
     print("\n[5/5] Guardando modelo...")
 
     # Crear directorios si no existen
-    checkpoint_dir = '../results/checkpoints'
-    logs_dir = '../results/logs'
+    checkpoint_dir = 'results/checkpoints'
+    logs_dir = 'results/logs'
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(logs_dir, exist_ok=True)
     
