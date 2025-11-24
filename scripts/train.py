@@ -40,7 +40,8 @@ def main():
     # === 1. CARGAR DATOS ===
     print("\n[1/5] Cargando datos...")
     
-    df_train = load_training_data(DATASET)
+    with open(train_path, 'rb') as f:
+        df_train = pickle.load(f)
     
     print(f"Train users: {len(df_train)}")
     print(f"Num items: {NUM_ITEMS}")
@@ -50,6 +51,7 @@ def main():
     
     trajectories = create_dt_dataset(df_train)
     validate_preprocessing(trajectories)
+    print("Trayectorias procesadas correctamente.")
     
     dataset = RecommendationDataset(trajectories, context_length=20)
     train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
