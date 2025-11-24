@@ -14,7 +14,7 @@ def create_dt_dataset(df_train):
     
     for idx, row in df_train.iterrows():
         # Extraer items, ratings, group
-        items = row['items']        # numpy array de item IDs
+        items = row['states']        # numpy array de item IDs
         ratings = row['ratings']    # numpy array de ratings
         group = row['user_group']   # int (0-7)
 
