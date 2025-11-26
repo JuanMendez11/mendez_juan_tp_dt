@@ -94,8 +94,6 @@ def evaluate_model(model, test_data, device, target_return=None, k_list=[5, 10, 
     return {key: np.mean(val) for key, val in metrics.items()}
 
 
-import numpy as np
-
 def evaluate_popularity_baseline(model, test_data, k_list=[5, 10, 20]):
     """
     Evalúa el modelo de Popularidad basándose en la lógica secuencial del TP.
