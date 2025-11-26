@@ -92,3 +92,79 @@ def evaluate_model(model, test_data, device, target_return=None, k_list=[5, 10, 
     
     # Promediar métricas
     return {key: np.mean(val) for key, val in metrics.items()}
+
+
+import numpy as np
+
+def evaluate_popularity_baseline(model, test_data, k_list=[5, 10, 20]):
+    """
+    Evalúa el modelo de Popularidad basándose en la lógica secuencial del TP.
+
+    Args:
+        model: Instancia de PopularityRecommender ya entrenada (.fit())
+        test_data: lista de usuarios de test
+        k_list: lista de cortes K para métricas
+    
+    Returns:
+        metrics: dict con promedios de HR@K, NDCG@K, MRR
+    """
+    
+    # Inicializar diccionarios para guardar resultados
+    metrics = {f'HR@{k}': [] for k in k_list}
+    metrics.update({f'NDCG@{k}': [] for k in k_list})
+    metrics['MRR'] = []
+
+    # Necesitamos pedir al modelo el K máximo necesario para cubrir todas las métricas
+    max_k = max(k_list)
+    
+    # Context length para igualar la evaluación del Transformer (empezar a predecir tras N items)
+    context_len = 20
+
+    for user in test_data:
+        items = user['items']
+        # Nota: Popularity no usa ratings ni groups, solo la secuencia de items vistos
+        
+        # Si el usuario tiene menos items que el contexto, saltamos (igual que en el DT)
+        if len(items) <= context_len:
+            continue
+
+        # Simular sesión secuencial
+        for t in range(context_len, len(items)):
+            
+            # 1. Definir historia y target
+            # history_items: todo lo visto antes del momento t (para filtrar ya vistos)
+            history_items = items[:t] 
+            target_item = items[t]
+            
+            # 2. Obtener recomendaciones
+            # El modelo devuelve una lista ordenada de IDs, ej: [50, 12, 3...]
+            recommendations = model.recommend(history_items, k=max_k)
+            
+            # 3. Calcular métricas manualmente
+            # Buscamos en qué posición (rank) quedó el item objetivo
+            try:
+                # index lanza ValueError si no está en la lista. 
+                # Sumamos 1 porque el índice empieza en 0.
+                rank = recommendations.index(target_item) + 1
+            except ValueError:
+                rank = None # El target no apareció en el top max_k
+
+            # Calcular HR y NDCG para cada k en k_list
+            for k in k_list:
+                if rank is not None and rank <= k:
+                    # Hit Rate: 1 si está en el top k
+                    metrics[f'HR@{k}'].append(1)
+                    # NDCG: 1 / log2(rank + 1) si está
+                    metrics[f'NDCG@{k}'].append(1.0 / np.log2(rank + 1))
+                else:
+                    metrics[f'HR@{k}'].append(0)
+                    metrics[f'NDCG@{k}'].append(0)
+            
+            # MRR (Mean Reciprocal Rank)
+            if rank is not None:
+                metrics['MRR'].append(1.0 / rank)
+            else:
+                metrics['MRR'].append(0)
+
+    # 4. Promediar métricas
+    return {key: np.mean(val) for key, val in metrics.items()}
